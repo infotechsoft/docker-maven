@@ -9,14 +9,6 @@ REPO_NAME=infotechsoft/maven
 MAVEN_VERSION=$1
 MAJOR_VERSION=$(echo $MAVEN_VERSION | cut -d . -f 1)
 
-docker build \
-  --build-arg MAVEN_VERSION=$MAVEN_VERSION \
-  -t $REPO_NAME:$MAVEN_VERSION -t $REPO_NAME:$MAJOR_VERSION \
-  .
-
-docker push $REPO_NAME:$MAVEN_VERSION
-docker push $REPO_NAME:$MAJOR_VERSION
-
 BASE_IMAGES="$(< base-images.txt)"
 for BASE_IMAGE in $BASE_IMAGES; do
   BASE_TAG=$(echo $BASE_IMAGE | cut -d ':' -f 2)

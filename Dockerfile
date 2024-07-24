@@ -5,7 +5,7 @@ FROM ${BASE_IMAGE}
 
 LABEL maintainer="Thomas J. Taylor <thomas@infotechsoft.com>"
 
-ARG MAVEN_VERSION=3.8.6
+ARG MAVEN_VERSION=
 
 ENV MAVEN_VERSION ${MAVEN_VERSION}
 ENV MAVEN_HOME /opt/apache-maven-${MAVEN_VERSION}
