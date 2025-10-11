@@ -1,4 +1,5 @@
-infotechsoft/java:openjdk-21
-infotechsoft/java:openjdk-17
-infotechsoft/java:openjdk-11
-infotechsoft/java:openjdk-1.8.0
+infotechsoft/java:25
+infotechsoft/java:21
+infotechsoft/java:17
+infotechsoft/java:11
+infotechsoft/java:8
