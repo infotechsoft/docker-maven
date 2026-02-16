@@ -1,7 +1,8 @@
 # Docker file for Rocky with JDK and Maven
 ARG BASE_IMAGE=infotechsoft/java:25
 
-FROM ${BASE_IMAGE} AS install
+# Workaround tar issue in QEMU - https://github.com/tonistiigi/binfmt/issues/285
+FROM --platform=$BUILDPLATFORM ${BASE_IMAGE} AS install
 
 ARG MAVEN_VERSION=
 
