@@ -1,0 +1,152 @@
+name: Build and Push Multi-Platform Maven Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      maven_version:
+        description: 'Maven version to build (e.g., 3.9.6)'
+        required: true
+        type: string
+      push:
+        description: 'Push images to Docker Hub'
+        required: false
+        default: false
+        type: boolean
+      java_versions:
+        description: 'Java versions to build (space-separated, default: 8 11 17 21 25)'
+        required: false
+        default: '8 11 17 21 25'
+        type: string
+
+env:
+  REGISTRY: docker.io
+  REPO_NAME: infotechsoft/maven
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      java_versions: ${{ steps.parse.outputs.java_versions }}
+      maven_major: ${{ steps.version.outputs.maven_major }}
+    steps:
+      - name: Parse Java versions
+        id: parse
+        run: |
+          VERSIONS="${{ inputs.java_versions || '8 11 17 21 25' }}"
+          JSON_ARRAY=$(echo "$VERSIONS" | tr ' ' '\n' | jq -R . | jq -s . | tr -d '\n')
+          echo "java_versions=$JSON_ARRAY" >> $GITHUB_OUTPUT
+      
+      - name: Extract Maven major version
+        id: version
+        run: |
+          MAVEN_VERSION="${{ inputs.maven_version }}"
+          MAVEN_MAJOR=$(echo "$MAVEN_VERSION" | cut -d . -f 1)
+          echo "maven_major=$MAVEN_MAJOR" >> $GITHUB_OUTPUT
+
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java_version: ${{ fromJson(needs.setup.outputs.java_versions) }}
+      fail-fast: false
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+      
+      - name: Login to Docker Hub
+        if: inputs.push
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Determine tags
+        id: tags
+        run: |
+          MAVEN_VERSION="${{ inputs.maven_version }}"
+          MAVEN_MAJOR="${{ needs.setup.outputs.maven_major }}"
+          JAVA_VERSION="${{ matrix.java_version }}"
+          BASE_TAG="jdk-$JAVA_VERSION"
+          
+          TAGS="${REPO_NAME}:${MAVEN_VERSION}-${BASE_TAG},${REPO_NAME}:${MAVEN_MAJOR}-${BASE_TAG}"
+          
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          echo "base_tag=${REPO_NAME}:${MAVEN_MAJOR}-${BASE_TAG}" >> $GITHUB_OUTPUT
+          echo "base_image=infotechsoft/java:${JAVA_VERSION}" >> $GITHUB_OUTPUT
+      
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.push }}
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            BASE_IMAGE=${{ steps.tags.outputs.base_image }}
+            MAVEN_VERSION=${{ inputs.maven_version }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Generate CVE report
+        id: scout
+        if: inputs.push
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: ${{ steps.tags.outputs.base_tag }}
+          format: markdown
+      
+      - name: Update CVE reports
+        if: inputs.push
+        run: |
+          mkdir -p reports
+          echo "${{ steps.scout.outputs.cves }}" > reports/maven-${{ needs.setup.outputs.maven_major }}-jdk-${{ matrix.java_version }}-cves.md
+      
+      - name: Upload CVE report artifact
+        if: inputs.push
+        uses: actions/upload-artifact@v6
+        with:
+          name: cve-reports-maven-${{ needs.setup.outputs.maven_major }}-jdk-${{ matrix.java_version }}
+          path: reports/maven-${{ needs.setup.outputs.maven_major }}-jdk-${{ matrix.java_version }}-cves.md
+          retention-days: 1
+
+  commit-reports:
+    needs: build
+    runs-on: ubuntu-latest
+    if: inputs.push
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Download all CVE report artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: reports
+          pattern: cve-reports-maven-*
+          merge-multiple: true
+      
+      - name: Commit all CVE reports
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: Update CVE reports for Maven ${{ inputs.maven_version }}"
+          file_pattern: 'reports/*.md'

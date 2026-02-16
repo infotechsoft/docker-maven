@@ -21,5 +21,6 @@ docker run -it --rm --name mvn-build -v "$(pwd)":/tmp -w /tmp maven:3-jdk-11 mvn
 ```
 
 ## Change History
+* 2026-02-16 Added Github action for building and pushing multi-platform images
 * 2025-10-11 Updated for Maven 3.9.11 on latest infotechsoft/java
 * 2025-05-13 Updated for Maven 3.9.9 on latest infotechsoft/java
